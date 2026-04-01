@@ -1,0 +1,1442 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>The Tail at Scale — Interactive Simulation</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;600;800&display=swap');
+
+        :root {
+            --bg: #0a0a0f;
+            --surface: #12121a;
+            --surface2: #1a1a28;
+            --border: #2a2a40;
+            --accent: #00f5a0;
+            --danger: #ff4d6d;
+            --warn: #ffd166;
+            --info: #4cc9f0;
+            --text: #e8e8f0;
+            --muted: #6060a0;
+            --slow: #ff4d6d;
+            --fast: #00f5a0;
+            --mid: #ffd166;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: var(--bg);
+            color: var(--text);
+            font-family: 'Syne', sans-serif;
+            min-height: 100vh;
+            overflow-x: hidden;
+        }
+
+        /* Background grid */
+        body::before {
+            content: '';
+            position: fixed;
+            inset: 0;
+            background-image:
+                linear-gradient(rgba(0, 245, 160, 0.03) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(0, 245, 160, 0.03) 1px, transparent 1px);
+            background-size: 40px 40px;
+            pointer-events: none;
+            z-index: 0;
+        }
+
+        .container {
+            max-width: 960px;
+            margin: 0 auto;
+            padding: 40px 20px;
+            position: relative;
+            z-index: 1;
+        }
+
+        /* Header */
+        .header {
+            text-align: center;
+            margin-bottom: 48px;
+        }
+
+        .header-label {
+            font-family: 'Space Mono', monospace;
+            font-size: 11px;
+            color: var(--accent);
+            letter-spacing: 4px;
+            text-transform: uppercase;
+            margin-bottom: 12px;
+        }
+
+        h1 {
+            font-size: clamp(28px, 5vw, 48px);
+            font-weight: 800;
+            line-height: 1.1;
+            background: linear-gradient(135deg, #fff 0%, var(--accent) 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            margin-bottom: 12px;
+        }
+
+        .header-sub {
+            color: var(--muted);
+            font-size: 14px;
+            font-family: 'Space Mono', monospace;
+        }
+
+        /* Nav tabs */
+        .tabs {
+            display: flex;
+            gap: 4px;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 6px;
+            margin-bottom: 32px;
+            flex-wrap: wrap;
+        }
+
+        .tab {
+            flex: 1;
+            min-width: 120px;
+            padding: 10px 16px;
+            border-radius: 8px;
+            border: none;
+            background: transparent;
+            color: var(--muted);
+            font-family: 'Space Mono', monospace;
+            font-size: 11px;
+            cursor: pointer;
+            transition: all 0.2s;
+            text-align: center;
+            letter-spacing: 1px;
+            text-transform: uppercase;
+        }
+
+        .tab.active {
+            background: var(--accent);
+            color: #000;
+            font-weight: 700;
+        }
+
+        .tab:hover:not(.active) {
+            color: var(--text);
+            background: var(--surface2);
+        }
+
+        /* Panels */
+        .panel {
+            display: none;
+        }
+
+        .panel.active {
+            display: block;
+        }
+
+        /* Section card */
+        .card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            padding: 28px;
+            margin-bottom: 20px;
+        }
+
+        .card-title {
+            font-size: 13px;
+            font-family: 'Space Mono', monospace;
+            color: var(--accent);
+            letter-spacing: 2px;
+            text-transform: uppercase;
+            margin-bottom: 8px;
+        }
+
+        .card-desc {
+            color: var(--muted);
+            font-size: 13px;
+            margin-bottom: 20px;
+            line-height: 1.6;
+            font-family: 'Space Mono', monospace;
+        }
+
+        /* Server grid */
+        .server-grid {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+            margin-bottom: 20px;
+        }
+
+        .server-node {
+            width: 36px;
+            height: 36px;
+            border-radius: 8px;
+            border: 2px solid var(--border);
+            background: var(--surface2);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 10px;
+            font-family: 'Space Mono', monospace;
+            transition: all 0.3s;
+            position: relative;
+            cursor: default;
+        }
+
+        .server-node.idle {
+            border-color: var(--border);
+            color: var(--muted);
+        }
+
+        .server-node.processing {
+            border-color: var(--info);
+            background: rgba(76, 201, 240, 0.15);
+            color: var(--info);
+            animation: pulse-blue 0.8s infinite;
+        }
+
+        .server-node.done {
+            border-color: var(--fast);
+            background: rgba(0, 245, 160, 0.15);
+            color: var(--fast);
+        }
+
+        .server-node.slow {
+            border-color: var(--slow);
+            background: rgba(255, 77, 109, 0.15);
+            color: var(--slow);
+            animation: pulse-red 0.6s infinite;
+        }
+
+        .server-node.cancelled {
+            border-color: var(--muted);
+            background: transparent;
+            color: var(--muted);
+            opacity: 0.4;
+        }
+
+        .server-node.hedged {
+            border-color: var(--warn);
+            background: rgba(255, 209, 102, 0.15);
+            color: var(--warn);
+        }
+
+        @keyframes pulse-blue {
+
+            0%,
+            100% {
+                box-shadow: 0 0 0 0 rgba(76, 201, 240, 0.4);
+            }
+
+            50% {
+                box-shadow: 0 0 0 6px rgba(76, 201, 240, 0);
+            }
+        }
+
+        @keyframes pulse-red {
+
+            0%,
+            100% {
+                box-shadow: 0 0 0 0 rgba(255, 77, 109, 0.5);
+            }
+
+            50% {
+                box-shadow: 0 0 0 6px rgba(255, 77, 109, 0);
+            }
+        }
+
+        /* Timeline bar */
+        .timeline-wrap {
+            margin-bottom: 16px;
+        }
+
+        .timeline-label {
+            font-family: 'Space Mono', monospace;
+            font-size: 11px;
+            color: var(--muted);
+            margin-bottom: 6px;
+            display: flex;
+            justify-content: space-between;
+        }
+
+        .timeline-track {
+            height: 28px;
+            background: var(--surface2);
+            border-radius: 6px;
+            border: 1px solid var(--border);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .timeline-fill {
+            height: 100%;
+            border-radius: 6px;
+            transition: width 0.1s linear;
+            display: flex;
+            align-items: center;
+            padding-left: 10px;
+            font-size: 11px;
+            font-family: 'Space Mono', monospace;
+            font-weight: 700;
+            white-space: nowrap;
+        }
+
+        .fill-fast {
+            background: linear-gradient(90deg, rgba(0, 245, 160, 0.3), rgba(0, 245, 160, 0.6));
+            color: var(--fast);
+        }
+
+        .fill-slow {
+            background: linear-gradient(90deg, rgba(255, 77, 109, 0.3), rgba(255, 77, 109, 0.6));
+            color: var(--slow);
+        }
+
+        .fill-hedge {
+            background: linear-gradient(90deg, rgba(255, 209, 102, 0.3), rgba(255, 209, 102, 0.6));
+            color: var(--warn);
+        }
+
+        /* Result box */
+        .result-box {
+            display: flex;
+            gap: 16px;
+            flex-wrap: wrap;
+            margin-top: 16px;
+        }
+
+        .result-stat {
+            flex: 1;
+            min-width: 120px;
+            background: var(--surface2);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 14px;
+            text-align: center;
+        }
+
+        .result-stat .val {
+            font-size: 26px;
+            font-weight: 800;
+            font-family: 'Space Mono', monospace;
+            line-height: 1;
+            margin-bottom: 4px;
+        }
+
+        .result-stat .lbl {
+            font-size: 10px;
+            color: var(--muted);
+            letter-spacing: 1px;
+            text-transform: uppercase;
+            font-family: 'Space Mono', monospace;
+        }
+
+        .val.good {
+            color: var(--fast);
+        }
+
+        .val.bad {
+            color: var(--slow);
+        }
+
+        .val.warn {
+            color: var(--warn);
+        }
+
+        /* Buttons */
+        .btn {
+            padding: 12px 28px;
+            border-radius: 8px;
+            border: none;
+            font-family: 'Space Mono', monospace;
+            font-size: 12px;
+            font-weight: 700;
+            cursor: pointer;
+            letter-spacing: 1px;
+            text-transform: uppercase;
+            transition: all 0.2s;
+        }
+
+        .btn-primary {
+            background: var(--accent);
+            color: #000;
+        }
+
+        .btn-primary:hover {
+            opacity: 0.85;
+            transform: translateY(-1px);
+        }
+
+        .btn-primary:disabled {
+            opacity: 0.4;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .btn-danger {
+            background: transparent;
+            color: var(--slow);
+            border: 1px solid var(--slow);
+        }
+
+        .btn-row {
+            display: flex;
+            gap: 12px;
+            margin-top: 16px;
+            flex-wrap: wrap;
+            align-items: center;
+        }
+
+        /* Log */
+        .log {
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 12px;
+            height: 120px;
+            overflow-y: auto;
+            font-family: 'Space Mono', monospace;
+            font-size: 11px;
+            line-height: 1.8;
+        }
+
+        .log-entry {
+            color: var(--muted);
+        }
+
+        .log-entry.info {
+            color: var(--info);
+        }
+
+        .log-entry.success {
+            color: var(--fast);
+        }
+
+        .log-entry.danger {
+            color: var(--slow);
+        }
+
+        .log-entry.warn {
+            color: var(--warn);
+        }
+
+        /* Math viz */
+        .math-row {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 10px;
+            font-family: 'Space Mono', monospace;
+            font-size: 12px;
+        }
+
+        .math-label {
+            color: var(--muted);
+            min-width: 180px;
+        }
+
+        .math-bar {
+            flex: 1;
+            height: 20px;
+            background: var(--surface2);
+            border-radius: 4px;
+            overflow: hidden;
+        }
+
+        .math-fill {
+            height: 100%;
+            border-radius: 4px;
+            transition: width 1s ease;
+        }
+
+        .math-val {
+            min-width: 50px;
+            text-align: right;
+            font-weight: 700;
+        }
+
+        /* Comparison table */
+        .compare-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-family: 'Space Mono', monospace;
+            font-size: 12px;
+        }
+
+        .compare-table th {
+            padding: 10px 14px;
+            text-align: left;
+            color: var(--accent);
+            border-bottom: 1px solid var(--border);
+            font-size: 10px;
+            letter-spacing: 2px;
+            text-transform: uppercase;
+        }
+
+        .compare-table td {
+            padding: 10px 14px;
+            border-bottom: 1px solid var(--border);
+            color: var(--text);
+        }
+
+        .compare-table tr:last-child td {
+            border-bottom: none;
+        }
+
+        .compare-table .good {
+            color: var(--fast);
+        }
+
+        .compare-table .bad {
+            color: var(--slow);
+        }
+
+        /* Fan-out viz */
+        .fanout-viz {
+            position: relative;
+            height: 200px;
+            margin-bottom: 20px;
+        }
+
+        .fanout-root {
+            position: absolute;
+            left: 50%;
+            top: 10px;
+            transform: translateX(-50%);
+            width: 60px;
+            height: 36px;
+            background: var(--surface2);
+            border: 2px solid var(--accent);
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 10px;
+            font-family: 'Space Mono', monospace;
+            color: var(--accent);
+            z-index: 2;
+        }
+
+        .fanout-leaves {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            display: flex;
+            justify-content: space-around;
+            align-items: flex-end;
+        }
+
+        .fanout-leaf {
+            width: 32px;
+            height: 32px;
+            border-radius: 6px;
+            border: 2px solid var(--border);
+            background: var(--surface2);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 9px;
+            font-family: 'Space Mono', monospace;
+            color: var(--muted);
+            transition: all 0.3s;
+            position: relative;
+        }
+
+        .fanout-leaf::before {
+            content: '';
+            position: absolute;
+            bottom: 100%;
+            left: 50%;
+            width: 1px;
+            height: 60px;
+            background: var(--border);
+            transform: translateX(-50%);
+        }
+
+        /* Tooltip-like annotation */
+        .annotation {
+            background: var(--surface2);
+            border-left: 3px solid var(--accent);
+            padding: 10px 14px;
+            border-radius: 0 8px 8px 0;
+            font-family: 'Space Mono', monospace;
+            font-size: 11px;
+            color: var(--muted);
+            margin: 12px 0;
+            line-height: 1.6;
+        }
+
+        .annotation strong {
+            color: var(--text);
+        }
+
+        .annotation.danger {
+            border-left-color: var(--slow);
+        }
+
+        .annotation.success {
+            border-left-color: var(--fast);
+        }
+
+        /* Speed slider */
+        .slider-row {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            font-family: 'Space Mono', monospace;
+            font-size: 11px;
+            color: var(--muted);
+        }
+
+        input[type=range] {
+            flex: 1;
+            accent-color: var(--accent);
+        }
+
+        /* Section divider */
+        .divider {
+            height: 1px;
+            background: var(--border);
+            margin: 24px 0;
+        }
+
+        .vs-badge {
+            display: inline-block;
+            background: var(--surface2);
+            border: 1px solid var(--border);
+            border-radius: 20px;
+            padding: 4px 14px;
+            font-size: 10px;
+            font-family: 'Space Mono', monospace;
+            color: var(--muted);
+            letter-spacing: 2px;
+            text-transform: uppercase;
+            margin: 0 auto;
+        }
+
+        .badge-row {
+            display: flex;
+            justify-content: center;
+            margin: -10px 0;
+            position: relative;
+            z-index: 1;
+        }
+
+        .tag {
+            display: inline-block;
+            padding: 3px 10px;
+            border-radius: 20px;
+            font-size: 10px;
+            font-family: 'Space Mono', monospace;
+            letter-spacing: 1px;
+            text-transform: uppercase;
+            margin-bottom: 8px;
+        }
+
+        .tag-problem {
+            background: rgba(255, 77, 109, 0.15);
+            color: var(--slow);
+            border: 1px solid var(--slow);
+        }
+
+        .tag-solution {
+            background: rgba(0, 245, 160, 0.15);
+            color: var(--fast);
+            border: 1px solid var(--fast);
+        }
+
+        /* Progress circle */
+        .progress-ring {
+            transform: rotate(-90deg);
+        }
+
+        .ring-track {
+            fill: none;
+            stroke: var(--surface2);
+            stroke-width: 6;
+        }
+
+        .ring-fill {
+            fill: none;
+            stroke-width: 6;
+            stroke-linecap: round;
+            transition: stroke-dashoffset 0.3s;
+        }
+
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            display: inline-block;
+            margin-right: 6px;
+        }
+
+        .dot-slow {
+            background: var(--slow);
+        }
+
+        .dot-fast {
+            background: var(--fast);
+        }
+
+        .dot-warn {
+            background: var(--warn);
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+
+        <div class="header">
+            <div class="header-label">Interactive Simulation</div>
+            <h1>The Tail at Scale</h1>
+            <div class="header-sub">// see the problem. feel the solution.</div>
+        </div>
+
+        <div class="tabs">
+            <button class="tab active" onclick="switchTab('scale')">01 · Scale Problem</button>
+            <button class="tab" onclick="switchTab('hedged')">02 · Hedged Requests</button>
+            <button class="tab" onclick="switchTab('fanout')">03 · Fan-out + Good Enough</button>
+            <button class="tab" onclick="switchTab('compare')">04 · All Solutions</button>
+        </div>
+
+        <!-- PANEL 1: Scale Problem -->
+        <div class="panel active" id="panel-scale">
+
+            <div class="card">
+                <span class="tag tag-problem">Problem</span>
+                <div class="card-title">The Math of Misery</div>
+                <div class="card-desc">Each server is slow only 1% of the time. Watch what happens as you add more
+                    servers to a single user request.</div>
+
+                <div id="math-rows"></div>
+
+                <div class="annotation danger">
+                    <strong>Key insight:</strong> With 100 servers, even a 1% individual slowness rate means <strong
+                        style="color:var(--slow)">63% of ALL user requests</strong> will be slow. The problem grows with
+                    scale.
+                </div>
+
+                <div class="btn-row">
+                    <button class="btn btn-primary" onclick="animateMath()">▶ Run Simulation</button>
+                </div>
+            </div>
+
+            <div class="card">
+                <span class="tag tag-problem">Problem</span>
+                <div class="card-title">Live Server Slowness</div>
+                <div class="card-desc">A request fans out to 20 servers. All must respond. Watch one slow server ruin
+                    everything.</div>
+
+                <div class="server-grid" id="scale-servers"></div>
+
+                <div class="timeline-wrap">
+                    <div class="timeline-label"><span>User Wait Time</span><span id="scale-timer">0ms</span></div>
+                    <div class="timeline-track">
+                        <div class="timeline-fill fill-slow" id="scale-bar" style="width:0%"></div>
+                    </div>
+                </div>
+
+                <div class="log" id="scale-log"></div>
+
+                <div class="btn-row">
+                    <button class="btn btn-primary" id="btn-scale" onclick="runScaleSim()">▶ Send Request</button>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- PANEL 2: Hedged Requests -->
+        <div class="panel" id="panel-hedged">
+
+            <div class="card">
+                <span class="tag tag-problem">Problem First</span>
+                <div class="card-title">Without Hedging</div>
+                <div class="card-desc">Request goes to Server A. If Server A is slow, the user just... waits.</div>
+
+                <div class="server-grid" id="no-hedge-servers"></div>
+
+                <div class="timeline-wrap">
+                    <div class="timeline-label"><span>User Wait</span><span id="nohedge-timer">0ms</span></div>
+                    <div class="timeline-track">
+                        <div class="timeline-fill fill-slow" id="nohedge-bar" style="width:0%"></div>
+                    </div>
+                </div>
+
+                <div class="log" id="nohedge-log"></div>
+                <div class="btn-row">
+                    <button class="btn btn-primary" id="btn-nohedge" onclick="runNoHedge()">▶ Send to Slow
+                        Server</button>
+                </div>
+            </div>
+
+            <div class="badge-row">
+                <div class="vs-badge">vs</div>
+            </div>
+
+            <div class="card">
+                <span class="tag tag-solution">Solution</span>
+                <div class="card-title">With Hedged Requests</div>
+                <div class="card-desc">Request goes to Server A. After 95th-percentile wait (50ms here), a backup
+                    request fires to Server B. First response wins.</div>
+
+                <div class="server-grid" id="hedge-servers"></div>
+
+                <div class="timeline-wrap">
+                    <div class="timeline-label"><span>User Wait</span><span id="hedge-timer">0ms</span></div>
+                    <div class="timeline-track">
+                        <div class="timeline-fill fill-hedge" id="hedge-bar" style="width:0%"></div>
+                    </div>
+                </div>
+
+                <div class="log" id="hedge-log"></div>
+                <div class="btn-row">
+                    <button class="btn btn-primary" id="btn-hedge" onclick="runHedge()">▶ Send Hedged Request</button>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-title">Result Comparison</div>
+                <div class="result-box">
+                    <div class="result-stat">
+                        <div class="val bad" id="nohedge-result">—</div>
+                        <div class="lbl">Without Hedging</div>
+                    </div>
+                    <div class="result-stat">
+                        <div class="val good" id="hedge-result">—</div>
+                        <div class="lbl">With Hedging</div>
+                    </div>
+                    <div class="result-stat">
+                        <div class="val warn" id="hedge-saving">—</div>
+                        <div class="lbl">Time Saved</div>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- PANEL 3: Fan-out + Good Enough -->
+        <div class="panel" id="panel-fanout">
+
+            <div class="card">
+                <span class="tag tag-problem">Problem</span>
+                <div class="card-title">Fan-out: Waiting for ALL Servers</div>
+                <div class="card-desc">A search query fans out to 10 leaf servers. You wait for every single one to
+                    respond, including the slow stragglers.</div>
+
+                <div class="fanout-viz">
+                    <div class="fanout-root">ROOT</div>
+                    <div class="fanout-leaves" id="fanout-leaves-prob"></div>
+                </div>
+
+                <div class="timeline-wrap">
+                    <div class="timeline-label"><span>Waiting for ALL 10 servers</span><span
+                            id="fanout-prob-timer">0ms</span></div>
+                    <div class="timeline-track">
+                        <div class="timeline-fill fill-slow" id="fanout-prob-bar" style="width:0%"></div>
+                    </div>
+                </div>
+
+                <div class="log" id="fanout-prob-log"></div>
+                <div class="btn-row">
+                    <button class="btn btn-primary" id="btn-fanout-prob" onclick="runFanoutProblem()">▶ Run Search (Wait
+                        for All)</button>
+                </div>
+            </div>
+
+            <div class="badge-row">
+                <div class="vs-badge">vs</div>
+            </div>
+
+            <div class="card">
+                <span class="tag tag-solution">Solution</span>
+                <div class="card-title">Good Enough: Return at 80% Responses</div>
+                <div class="card-desc">Once 8 out of 10 servers respond, return results immediately. The slowest 20%
+                    almost never have unique critical data.</div>
+
+                <div class="fanout-viz">
+                    <div class="fanout-root">ROOT</div>
+                    <div class="fanout-leaves" id="fanout-leaves-sol"></div>
+                </div>
+
+                <div class="timeline-wrap">
+                    <div class="timeline-label"><span>Returning at 80% responses</span><span
+                            id="fanout-sol-timer">0ms</span></div>
+                    <div class="timeline-track">
+                        <div class="timeline-fill fill-hedge" id="fanout-sol-bar" style="width:0%"></div>
+                    </div>
+                </div>
+
+                <div class="log" id="fanout-sol-log"></div>
+                <div class="btn-row">
+                    <button class="btn btn-primary" id="btn-fanout-sol" onclick="runFanoutSolution()">▶ Run Search (Good
+                        Enough)</button>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-title">Result Comparison</div>
+                <div class="result-box">
+                    <div class="result-stat">
+                        <div class="val bad" id="fanout-prob-result">—</div>
+                        <div class="lbl">Wait for All</div>
+                    </div>
+                    <div class="result-stat">
+                        <div class="val good" id="fanout-sol-result">—</div>
+                        <div class="lbl">Good Enough</div>
+                    </div>
+                    <div class="result-stat">
+                        <div class="val warn" id="fanout-saving">—</div>
+                        <div class="lbl">Faster</div>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- PANEL 4: All Solutions Summary -->
+        <div class="panel" id="panel-compare">
+
+            <div class="card">
+                <div class="card-title">All Techniques at a Glance</div>
+                <div class="card-desc">Run each scenario and watch the numbers update live.</div>
+
+                <table class="compare-table">
+                    <thead>
+                        <tr>
+                            <th>Technique</th>
+                            <th>Problem it Solves</th>
+                            <th>Cost</th>
+                            <th>99th Pct Gain</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td>Hedged Requests</td>
+                            <td>Single slow replica</td>
+                            <td class="warn">+5% requests</td>
+                            <td class="good">↓ 24x faster</td>
+                        </tr>
+                        <tr>
+                            <td>Tied Requests</td>
+                            <td>Queue buildup</td>
+                            <td class="good">&lt;1% disk use</td>
+                            <td class="good">↓ 38% latency</td>
+                        </tr>
+                        <tr>
+                            <td>Good Enough</td>
+                            <td>Straggler servers</td>
+                            <td class="good">Slightly incomplete</td>
+                            <td class="good">↓ 50%+ latency</td>
+                        </tr>
+                        <tr>
+                            <td>Micro-partitions</td>
+                            <td>Load imbalance</td>
+                            <td class="good">Memory overhead</td>
+                            <td class="good">↓ Consistent</td>
+                        </tr>
+                        <tr>
+                            <td>Canary Requests</td>
+                            <td>Crash propagation</td>
+                            <td class="good">+1 server roundtrip</td>
+                            <td class="good">Prevents cascades</td>
+                        </tr>
+                        <tr>
+                            <td>Priority Queues</td>
+                            <td>Background interference</td>
+                            <td class="good">Code complexity</td>
+                            <td class="good">↓ Consistent</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="card">
+                <div class="card-title">Live Race: All Techniques vs No Technique</div>
+                <div class="card-desc">Simulating 5 simultaneous requests. Watch the race.</div>
+
+                <div id="race-rows"></div>
+
+                <div class="btn-row">
+                    <button class="btn btn-primary" id="btn-race" onclick="runRace()">▶ Start Race</button>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-title">The Core Insight</div>
+                <div class="annotation success">
+                    <strong>Tail-tolerant systems</strong> don't try to make every server fast. They make the
+                    <strong>system</strong> resilient to slow servers — just like fault-tolerant systems don't try to
+                    make every component failure-proof; they make the system resilient to failures.
+                </div>
+                <div class="annotation">
+                    <strong>The analogy:</strong> You don't fix traffic jams by making every car faster. You build
+                    highways with multiple lanes so slow cars can be overtaken.
+                </div>
+            </div>
+
+        </div>
+
+    </div>
+
+    <script>
+        // ─── Utilities ────────────────────────────────────────────────
+        function switchTab(name) {
+            document.querySelectorAll('.tab').forEach((t, i) => {
+                t.classList.toggle('active', ['scale', 'hedged', 'fanout', 'compare'][i] === name);
+            });
+            document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+            document.getElementById('panel-' + name).classList.add('active');
+        }
+
+        function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+        function log(id, msg, type = '') {
+            const el = document.getElementById(id);
+            const div = document.createElement('div');
+            div.className = 'log-entry ' + type;
+            div.textContent = '> ' + msg;
+            el.appendChild(div);
+            el.scrollTop = el.scrollHeight;
+        }
+
+        function clearLog(id) {
+            document.getElementById(id).innerHTML = '';
+        }
+
+        function setBar(id, pct, ms) {
+            document.getElementById(id).style.width = Math.min(pct, 100) + '%';
+            document.getElementById(id.replace('-bar', '-timer')).textContent = ms + 'ms';
+        }
+
+        function makeServers(containerId, count, labels) {
+            const el = document.getElementById(containerId);
+            el.innerHTML = '';
+            for (let i = 0; i < count; i++) {
+                const d = document.createElement('div');
+                d.className = 'server-node idle';
+                d.id = containerId + '-s' + i;
+                d.textContent = labels ? labels[i] : 'S' + i;
+                el.appendChild(d);
+            }
+        }
+
+        function setServer(containerId, idx, state, label) {
+            const el = document.getElementById(containerId + '-s' + idx);
+            if (!el) return;
+            el.className = 'server-node ' + state;
+            if (label !== undefined) el.textContent = label;
+        }
+
+        // ─── Panel 1: Scale Math ──────────────────────────────────────
+        const mathData = [
+            { servers: 1, slow: 0.01, prob: 0.010 },
+            { servers: 5, slow: 0.01, prob: 0.049 },
+            { servers: 10, slow: 0.01, prob: 0.096 },
+            { servers: 50, slow: 0.01, prob: 0.395 },
+            { servers: 100, slow: 0.01, prob: 0.634 },
+            { servers: 500, slow: 0.01, prob: 0.993 },
+            { servers: 2000, slow: 0.0001, prob: 0.181 },
+        ];
+
+        function buildMathRows() {
+            const container = document.getElementById('math-rows');
+            container.innerHTML = '';
+            mathData.forEach((d, i) => {
+                const pct = Math.round(d.prob * 100);
+                const color = pct < 10 ? 'var(--fast)' : pct < 40 ? 'var(--warn)' : 'var(--slow)';
+                container.innerHTML += `
+      <div class="math-row">
+        <div class="math-label">${d.servers} servers (${d.slow * 100}% each slow)</div>
+        <div class="math-bar">
+          <div class="math-fill" id="mf${i}" style="width:0%;background:${color}"></div>
+        </div>
+        <div class="math-val" id="mv${i}" style="color:${color}">0%</div>
+      </div>`;
+            });
+        }
+
+        async function animateMath() {
+            buildMathRows();
+            for (let i = 0; i < mathData.length; i++) {
+                await sleep(200);
+                const pct = Math.round(mathData[i].prob * 100);
+                document.getElementById('mf' + i).style.width = pct + '%';
+                document.getElementById('mv' + i).textContent = pct + '%';
+            }
+        }
+
+        buildMathRows();
+
+        // ─── Panel 1: Scale Sim ───────────────────────────────────────
+        makeServers('scale-servers', 20);
+
+        async function runScaleSim() {
+            const btn = document.getElementById('btn-scale');
+            btn.disabled = true;
+            clearLog('scale-log');
+            makeServers('scale-servers', 20);
+            setBar('scale-bar', 0, 0);
+
+            // Pick 2 slow servers randomly
+            const slowIdxs = new Set();
+            while (slowIdxs.size < 2) slowIdxs.add(Math.floor(Math.random() * 20));
+
+            log('scale-log', 'Fanning request out to 20 servers...', 'info');
+
+            // Mark all processing
+            for (let i = 0; i < 20; i++) setServer('scale-servers', i, 'processing', 'S' + i);
+
+            // Assign response times
+            const times = Array.from({ length: 20 }, (_, i) =>
+                slowIdxs.has(i) ? 800 + Math.random() * 400 : 20 + Math.random() * 60
+            );
+
+            const maxTime = Math.max(...times);
+            const startTime = Date.now();
+            let done = 0;
+
+            // Animate each server finishing
+            const promises = times.map((t, i) => sleep(t).then(() => {
+                const state = slowIdxs.has(i) ? 'slow' : 'done';
+                setServer('scale-servers', i, state, slowIdxs.has(i) ? '!!!' : '✓');
+                done++;
+                if (slowIdxs.has(i)) {
+                    log('scale-log', `S${i} SLOW — still processing at ${Math.round(t)}ms`, 'danger');
+                }
+            }));
+
+            // Animate bar up to worst server
+            const interval = setInterval(() => {
+                const elapsed = Date.now() - startTime;
+                const pct = (elapsed / maxTime) * 100;
+                setBar('scale-bar', pct, Math.round(elapsed));
+                if (elapsed >= maxTime) clearInterval(interval);
+            }, 30);
+
+            await Promise.all(promises);
+            clearInterval(interval);
+            setBar('scale-bar', 100, Math.round(maxTime));
+            log('scale-log', `User waited ${Math.round(maxTime)}ms for 2 slow servers!`, 'danger');
+            log('scale-log', '18 fast servers done in ~40ms. 2 slow ones cost 800ms+', 'warn');
+            btn.disabled = false;
+        }
+
+        // ─── Panel 2: Hedged Requests ─────────────────────────────────
+        makeServers('no-hedge-servers', 2, ['A (slow)', 'B (fast)']);
+        makeServers('hedge-servers', 2, ['A (slow)', 'B (fast)']);
+
+        let noHedgeResult = null, hedgeResult = null;
+
+        async function runNoHedge() {
+            const btn = document.getElementById('btn-nohedge');
+            btn.disabled = true;
+            clearLog('nohedge-log');
+            makeServers('no-hedge-servers', 2, ['A (slow)', 'B (fast)']);
+            setBar('nohedge-bar', 0, 0);
+
+            const slowTime = 700 + Math.random() * 200;
+            log('nohedge-log', 'Sending request to Server A...', 'info');
+            setServer('no-hedge-servers', 0, 'processing', 'A...');
+
+            const start = Date.now();
+            const interval = setInterval(() => {
+                const el = Date.now() - start;
+                setBar('nohedge-bar', (el / slowTime) * 100, Math.round(el));
+            }, 30);
+
+            await sleep(slowTime);
+            clearInterval(interval);
+            setServer('no-hedge-servers', 0, 'slow', 'A ✓');
+            setBar('nohedge-bar', 100, Math.round(slowTime));
+            log('nohedge-log', `Server A finally responded at ${Math.round(slowTime)}ms`, 'danger');
+            log('nohedge-log', 'Server B was fast but was never asked.', 'warn');
+
+            noHedgeResult = Math.round(slowTime);
+            document.getElementById('nohedge-result').textContent = noHedgeResult + 'ms';
+            updateHedgeSaving();
+            btn.disabled = false;
+        }
+
+        async function runHedge() {
+            const btn = document.getElementById('btn-hedge');
+            btn.disabled = true;
+            clearLog('hedge-log');
+            makeServers('hedge-servers', 2, ['A (slow)', 'B (fast)']);
+            setBar('hedge-bar', 0, 0);
+
+            const slowTime = 700 + Math.random() * 200;
+            const fastTime = 30 + Math.random() * 40;
+            const hedgeDelay = 50; // fire hedge at 50ms
+
+            log('hedge-log', 'Sending request to Server A...', 'info');
+            setServer('hedge-servers', 0, 'processing', 'A...');
+
+            const start = Date.now();
+            let done = false;
+
+            const interval = setInterval(() => {
+                if (done) return;
+                const el = Date.now() - start;
+                setBar('hedge-bar', (el / (fastTime + hedgeDelay)) * 100, Math.round(el));
+            }, 30);
+
+            // After hedge delay, fire to B
+            await sleep(hedgeDelay);
+            if (!done) {
+                log('hedge-log', `${hedgeDelay}ms passed, no response. Firing hedge to Server B!`, 'warn');
+                setServer('hedge-servers', 1, 'hedged', 'B...');
+            }
+
+            // B finishes fast
+            const bDone = sleep(fastTime).then(() => {
+                if (!done) {
+                    done = true;
+                    const total = hedgeDelay + fastTime;
+                    clearInterval(interval);
+                    setBar('hedge-bar', 100, Math.round(total));
+                    setServer('hedge-servers', 1, 'done', 'B ✓');
+                    setServer('hedge-servers', 0, 'cancelled', 'A ✗');
+                    log('hedge-log', `Server B responded at ${Math.round(total)}ms!`, 'success');
+                    log('hedge-log', 'Server A cancelled. User already has result.', 'success');
+                    hedgeResult = Math.round(total);
+                    document.getElementById('hedge-result').textContent = hedgeResult + 'ms';
+                    updateHedgeSaving();
+                }
+            });
+
+            await bDone;
+            btn.disabled = false;
+        }
+
+        function updateHedgeSaving() {
+            if (noHedgeResult && hedgeResult) {
+                const saving = noHedgeResult - hedgeResult;
+                const pct = Math.round((saving / noHedgeResult) * 100);
+                document.getElementById('hedge-saving').textContent = saving + 'ms (-' + pct + '%)';
+            }
+        }
+
+        // ─── Panel 3: Fan-out ─────────────────────────────────────────
+        function buildFanoutLeaves(containerId, count) {
+            const el = document.getElementById(containerId);
+            el.innerHTML = '';
+            for (let i = 0; i < count; i++) {
+                const d = document.createElement('div');
+                d.className = 'fanout-leaf';
+                d.id = containerId + '-l' + i;
+                d.textContent = 'S' + i;
+                el.appendChild(d);
+            }
+        }
+
+        buildFanoutLeaves('fanout-leaves-prob', 10);
+        buildFanoutLeaves('fanout-leaves-sol', 10);
+
+        function setLeaf(containerId, idx, state) {
+            const el = document.getElementById(containerId + '-l' + idx);
+            if (!el) return;
+            const colors = {
+                processing: 'var(--info)',
+                done: 'var(--fast)',
+                slow: 'var(--slow)',
+                skipped: 'var(--muted)',
+            };
+            el.style.borderColor = colors[state] || 'var(--border)';
+            el.style.color = colors[state] || 'var(--muted)';
+            el.style.background = state === 'done' ? 'rgba(0,245,160,0.15)' :
+                state === 'slow' ? 'rgba(255,77,109,0.15)' :
+                    state === 'processing' ? 'rgba(76,201,240,0.1)' : '';
+            if (state === 'done') el.textContent = '✓';
+            if (state === 'slow') el.textContent = '⚠';
+            if (state === 'skipped') el.textContent = '—';
+        }
+
+        let fanoutProbResult = null, fanoutSolResult = null;
+
+        async function runFanoutProblem() {
+            const btn = document.getElementById('btn-fanout-prob');
+            btn.disabled = true;
+            clearLog('fanout-prob-log');
+            buildFanoutLeaves('fanout-leaves-prob', 10);
+
+            const slowIdxs = new Set([3, 7]);
+            const times = Array.from({ length: 10 }, (_, i) =>
+                slowIdxs.has(i) ? 600 + Math.random() * 300 : 30 + Math.random() * 80
+            );
+            const maxTime = Math.max(...times);
+
+            for (let i = 0; i < 10; i++) setLeaf('fanout-leaves-prob', i, 'processing');
+            log('fanout-prob-log', 'Sending to all 10 servers. Waiting for ALL...', 'info');
+
+            const start = Date.now();
+            const interval = setInterval(() => {
+                const el = Date.now() - start;
+                document.getElementById('fanout-prob-bar').style.width = (el / maxTime * 100) + '%';
+                document.getElementById('fanout-prob-timer').textContent = Math.round(el) + 'ms';
+            }, 30);
+
+            const promises = times.map((t, i) => sleep(t).then(() => {
+                setLeaf('fanout-leaves-prob', i, slowIdxs.has(i) ? 'slow' : 'done');
+                if (slowIdxs.has(i)) log('fanout-prob-log', `S${i} is slow (${Math.round(t)}ms)!`, 'danger');
+            }));
+
+            await Promise.all(promises);
+            clearInterval(interval);
+            fanoutProbResult = Math.round(maxTime);
+            document.getElementById('fanout-prob-bar').style.width = '100%';
+            document.getElementById('fanout-prob-timer').textContent = fanoutProbResult + 'ms';
+            document.getElementById('fanout-prob-result').textContent = fanoutProbResult + 'ms';
+            log('fanout-prob-log', `User waited ${fanoutProbResult}ms. 2 slow servers held everyone hostage.`, 'danger');
+            updateFanoutSaving();
+            btn.disabled = false;
+        }
+
+        async function runFanoutSolution() {
+            const btn = document.getElementById('btn-fanout-sol');
+            btn.disabled = true;
+            clearLog('fanout-sol-log');
+            buildFanoutLeaves('fanout-leaves-sol', 10);
+
+            const slowIdxs = new Set([3, 7]);
+            const times = Array.from({ length: 10 }, (_, i) =>
+                slowIdxs.has(i) ? 600 + Math.random() * 300 : 30 + Math.random() * 80
+            );
+            times.sort((a, b) => a - b);
+            const threshold = times[7]; // 8th fastest = 80%
+
+            for (let i = 0; i < 10; i++) setLeaf('fanout-leaves-sol', i, 'processing');
+            log('fanout-sol-log', 'Sending to all 10 servers. Will return at 80%...', 'info');
+
+            const origTimes = Array.from({ length: 10 }, (_, i) =>
+                slowIdxs.has(i) ? 600 + Math.random() * 300 : 30 + Math.random() * 80
+            );
+            const sortedOrig = [...origTimes].sort((a, b) => a - b);
+            const cutoff = sortedOrig[7];
+
+            const start = Date.now();
+            let returned = false;
+
+            const interval = setInterval(() => {
+                const el = Date.now() - start;
+                if (!returned) {
+                    document.getElementById('fanout-sol-bar').style.width = (el / cutoff * 100) + '%';
+                    document.getElementById('fanout-sol-timer').textContent = Math.round(el) + 'ms';
+                }
+            }, 30);
+
+            let doneCount = 0;
+            const promises = origTimes.map((t, i) => sleep(t).then(() => {
+                doneCount++;
+                if (!returned) {
+                    setLeaf('fanout-leaves-sol', i, slowIdxs.has(i) ? 'slow' : 'done');
+                    if (doneCount === 8 && !returned) {
+                        returned = true;
+                        clearInterval(interval);
+                        const elapsed = Math.round(Date.now() - start);
+                        document.getElementById('fanout-sol-bar').style.width = '100%';
+                        document.getElementById('fanout-sol-timer').textContent = elapsed + 'ms';
+                        fanoutSolResult = elapsed;
+                        document.getElementById('fanout-sol-result').textContent = elapsed + 'ms';
+                        log('fanout-sol-log', `8/10 servers responded at ${elapsed}ms. Returning now!`, 'success');
+                        log('fanout-sol-log', 'Slow servers S3, S7 still processing. User doesn\'t wait.', 'success');
+                        // Mark remaining as skipped
+                        origTimes.forEach((_, j) => {
+                            const leaf = document.getElementById('fanout-leaves-sol-l' + j);
+                            if (leaf && leaf.textContent !== '✓') setLeaf('fanout-leaves-sol', j, 'skipped');
+                        });
+                        updateFanoutSaving();
+                    }
+                }
+            }));
+
+            await Promise.all(promises);
+            clearInterval(interval);
+            btn.disabled = false;
+        }
+
+        function updateFanoutSaving() {
+            if (fanoutProbResult && fanoutSolResult) {
+                const saving = fanoutProbResult - fanoutSolResult;
+                const pct = Math.round((saving / fanoutProbResult) * 100);
+                document.getElementById('fanout-saving').textContent = saving + 'ms (-' + pct + '%)';
+            }
+        }
+
+        // ─── Panel 4: Race ────────────────────────────────────────────
+        const techniques = [
+            { name: 'No Technique (Baseline)', color: 'var(--slow)', time: () => 800 + Math.random() * 400 },
+            { name: 'Hedged Requests', color: 'var(--warn)', time: () => 50 + Math.random() * 80 },
+            { name: 'Good Enough (80%)', color: 'var(--info)', time: () => 60 + Math.random() * 60 },
+            { name: 'Tied Requests', color: '#c77dff', time: () => 40 + Math.random() * 60 },
+            { name: 'Priority Queues', color: 'var(--fast)', time: () => 30 + Math.random() * 50 },
+        ];
+
+        function buildRaceRows() {
+            const container = document.getElementById('race-rows');
+            container.innerHTML = '';
+            techniques.forEach((t, i) => {
+                container.innerHTML += `
+      <div style="margin-bottom:14px">
+        <div style="display:flex;justify-content:space-between;font-family:'Space Mono',monospace;font-size:11px;margin-bottom:5px">
+          <span style="color:${t.color}">● ${t.name}</span>
+          <span id="race-time-${i}" style="color:var(--muted)">—</span>
+        </div>
+        <div class="timeline-track">
+          <div id="race-bar-${i}" style="height:100%;width:0%;background:${t.color};opacity:0.6;border-radius:6px;transition:width 0.05s linear;display:flex;align-items:center;padding-left:8px;font-size:10px;font-family:'Space Mono',monospace;color:#fff;font-weight:700"></div>
+        </div>
+      </div>`;
+            });
+        }
+
+        buildRaceRows();
+
+        async function runRace() {
+            const btn = document.getElementById('btn-race');
+            btn.disabled = true;
+            buildRaceRows();
+
+            const maxTotal = 1200;
+            const times = techniques.map(t => t.time());
+            const maxT = Math.max(...times);
+
+            const start = Date.now();
+            let finished = new Array(techniques.length).fill(false);
+
+            const intervals = times.map((t, i) => {
+                return sleep(t).then(() => {
+                    finished[i] = true;
+                    document.getElementById('race-bar-' + i).style.width = '100%';
+                    document.getElementById('race-time-' + i).textContent = Math.round(t) + 'ms ✓';
+                    document.getElementById('race-time-' + i).style.color = techniques[i].color;
+                });
+            });
+
+            const ticker = setInterval(() => {
+                const el = Date.now() - start;
+                for (let i = 0; i < techniques.length; i++) {
+                    if (!finished[i]) {
+                        const pct = Math.min((el / times[i]) * 100, 99);
+                        document.getElementById('race-bar-' + i).style.width = pct + '%';
+                        document.getElementById('race-time-' + i).textContent = Math.round(el) + 'ms';
+                    }
+                }
+                if (el >= maxT) clearInterval(ticker);
+            }, 30);
+
+            await Promise.all(intervals);
+            clearInterval(ticker);
+            btn.disabled = false;
+        }
+    </script>
+</body>
+
+</html>
